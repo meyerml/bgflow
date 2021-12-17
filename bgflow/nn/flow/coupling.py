@@ -8,7 +8,11 @@ from .base import Flow
 from .inverted import InverseFlow
 from .transformer.affine import AffineTransformer
 
-__all__ = ["SplitFlow", "MergeFlow", "SwapFlow", "CouplingFlow", "WrapFlow", "VolumePreservingWrapFlow"]
+__all__ = [
+    "SplitFlow", "MergeFlow", "SwapFlow", "CouplingFlow",
+    "WrapFlow", "SetConstantFlow", "VolumePreservingWrapFlow"
+]
+
 
 
 class SplitFlow(Flow):
@@ -207,7 +211,7 @@ class WrapFlow(Flow):
     def _forward(self, *xs, **kwargs):
         inp = (xs[i] for i in self._indices)
         output = [xs[i] for i in range(len(xs)) if i not in self._indices]
-        *yi, dlogp = self._flow(*inp)
+        *yi, dlogp = self._flow(*inp, **kwargs)
         assert len(yi) == len(self._out_indices)
         for i in self._argsort_out_indices:
             index = self._out_indices[i]
@@ -217,7 +221,7 @@ class WrapFlow(Flow):
     def _inverse(self, *xs, **kwargs):
         inp = (xs[i] for i in self._out_indices)
         output = [xs[i] for i in range(len(xs)) if i not in self._out_indices]
-        *yi, dlogp = self._flow(*inp, inverse=True)
+        *yi, dlogp = self._flow(*inp, inverse=True, **kwargs)
         assert len(yi) == len(self._indices)
         for i in self._argsort_indices:
             index = self._indices[i]
@@ -304,3 +308,52 @@ class VolumePreservingWrapFlow(WrapFlow):
     class VolumeSinkConditioner(torch.nn.Module):
         def __init__(self):
             pass
+
+
+class SetConstantFlow(Flow):
+    """A flow that sets some inputs constant in the forward direction and removes them in the inverse.
+
+    Parameters
+    ----------
+    indices : Sequence[int]
+        Indices to be set to constants.
+    values : Sequence[tensor]
+        Constant values; sequence has to have the same length as `indices`.
+    n_event_dims0 : int, optional
+        The number of event dims of x[0]. Required to infer the batch shape.
+    """
+
+    def __init__(self, indices, values, n_event_dims0=1):
+        super().__init__()
+        argsort = np.argsort(indices)
+        self.indices = [indices[i] for i in argsort]
+        values = [values[i] for i in argsort]
+        for i, v in enumerate(values):
+            self.register_buffer(f"_values_{i}", v)
+        self.n_event_dims0 = n_event_dims0
+
+    @property
+    def values(self):
+        result = []
+        i = 0
+        while hasattr(self, f"_values_{i}"):
+            result.append(getattr(self, f"_values_{i}"))
+            i += 1
+        return result
+
+    def _forward(self, *xs, **kwargs):
+        """insert constants"""
+        batch_shape = list(xs[0].shape[:self.n_event_dims0])
+        y = list(xs)
+        for i, v in zip(self.indices, self.values):
+            y.insert(i, v.repeat([*batch_shape, *np.ones_like(v.shape)]))
+        dlogp = torch.zeros(batch_shape + [1], device=xs[0].device, dtype=xs[0].dtype)
+        return (*y, dlogp)
+
+    def _inverse(self, *xs, **kwargs):
+        """remove constants"""
+        y = tuple(xs[i] for i, z in enumerate(xs) if i not in self.indices)
+        batch_shape = list(y[0].shape[:self.n_event_dims0])
+        dlogp = torch.zeros(batch_shape + [1], device=y[0].device, dtype=y[0].dtype)
+        return (*y, dlogp)
+
