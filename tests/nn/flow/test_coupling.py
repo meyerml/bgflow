@@ -1,7 +1,7 @@
 import pytest
 
 import torch
-from bgflow import Flow, SplitFlow, Transformer, CouplingFlow, WrapFlow
+from bgflow import Flow, SplitFlow, Transformer, CouplingFlow, WrapFlow, VolumePreservingWrapFlow, DenseNet
 
 
 def test_split_flow(ctx):
@@ -147,3 +147,40 @@ def test_wrap_flow(device, dtype):
     assert torch.allclose(z2, x2)
     assert torch.allclose(z3, x3)
     assert torch.allclose(dlogp, torch.zeros_like(x1[...,[0]]))
+
+
+class DummyNVPFlow(Flow):
+    def _forward(self, *xs, **kwargs):
+        out = (2*x for x in xs)
+        dlogp = torch.log(2*torch.ones_like(xs[0][..., [0]]))
+        return (*out, dlogp)
+
+    def _inverse(self, *xs, **kwargs):
+        out = (x / 2 for x in xs)
+        dlogp = torch.log(0.5*torch.ones_like(xs[0][..., [0]]))
+        return (*out, dlogp)
+
+
+def test_volume_preserving_wrap(ctx):
+    # five inputs
+    inputs = torch.arange(20, **ctx).reshape(2, 10).chunk(5, dim=-1)
+    # flow
+    wrap_flow = VolumePreservingWrapFlow(
+        flow_input_indices=(1, 2, 4),
+        flow_output_indices=(3, 1, 4),
+        volume_sink_index=3,
+        flow=DummyNVPFlow(),
+        shift_logscale=DenseNet((13, 2))
+    )
+    #        0  x1  x2  SINK  x3
+    #   ->   ( 0  SINK )   ( x1  x2  x3 )
+    #   ->   ( 0  SINK )   ( y1  y2  y3 )
+    #   ->   0  y2  SINK  y1  y3
+    assert wrap_flow.volume_sink_output_index == 2
+    *outputs, dlogp = wrap_flow.forward(*inputs)
+    assert torch.allclose(dlogp, torch.zeros_like(dlogp))
+    assert torch.allclose(outputs[0], inputs[0])
+    assert torch.allclose(outputs[1], 2*inputs[2])
+    assert torch.allclose(outputs[2], 1/(2*2*2)*inputs[3])
+    assert torch.allclose(outputs[3], 2*inputs[1])
+    assert torch.allclose(outputs[4], 2*inputs[4])

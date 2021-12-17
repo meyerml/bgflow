@@ -1,13 +1,14 @@
 import warnings
-from typing import Sequence
+from typing import Sequence, Union
 
 import numpy as np
 import torch
 
 from .base import Flow
 from .inverted import InverseFlow
+from .transformer.affine import AffineTransformer
 
-__all__ = ["SplitFlow", "MergeFlow", "SwapFlow", "CouplingFlow", "WrapFlow"]
+__all__ = ["SplitFlow", "MergeFlow", "SwapFlow", "CouplingFlow", "WrapFlow", "VolumePreservingWrapFlow"]
 
 
 class SplitFlow(Flow):
@@ -207,6 +208,7 @@ class WrapFlow(Flow):
         inp = (xs[i] for i in self._indices)
         output = [xs[i] for i in range(len(xs)) if i not in self._indices]
         *yi, dlogp = self._flow(*inp)
+        assert len(yi) == len(self._out_indices)
         for i in self._argsort_out_indices:
             index = self._out_indices[i]
             output.insert(index, yi[i])
@@ -216,7 +218,89 @@ class WrapFlow(Flow):
         inp = (xs[i] for i in self._out_indices)
         output = [xs[i] for i in range(len(xs)) if i not in self._out_indices]
         *yi, dlogp = self._flow(*inp, inverse=True)
+        assert len(yi) == len(self._indices)
         for i in self._argsort_indices:
             index = self._indices[i]
             output.insert(index, yi[i])
         return (*tuple(output), dlogp)
+
+
+class VolumePreservingWrapFlow(WrapFlow):
+    def __init__(
+            self,
+            flow: Flow,
+            volume_sink_index: int,
+            shift_transformation: torch.nn.Module,
+            scale_transformation: torch.nn.Module,
+            flow_input_indices: Sequence[int],
+            flow_output_indices: Sequence[int] = None,
+            condition_on_flow_input: bool = True,
+            condition_on_flow_output: bool = True,
+            condition_on_dlogp: bool = True,
+            condition_on_passive_input: bool = False,
+    ):
+        super().__init__(flow, flow_input_indices, flow_output_indices)
+        if volume_sink_index in flow_input_indices:
+            raise ValueError(
+                "Make sure that the volume sink tensor does not play an active part in the flow transform."
+            )
+        self.volume_sink_index = volume_sink_index
+        self.co_transform = AffineTransformer(
+            shift_transformation=shift_transformation,
+            scale_transformation=scale_transformation,
+            preserve_volume=True
+        )
+        self.condition_on_flow_input = condition_on_flow_input
+        self.condition_on_flow_output = condition_on_flow_output
+        self.condition_on_dlogp = condition_on_dlogp
+        self.condition_on_passive_input = condition_on_passive_input
+
+    @property
+    def volume_sink_output_index(self):
+        n_flow_non_inputs_before_sink = sum(i not in self._indices for i in range(self.volume_sink_index))
+        output_index = n_flow_non_inputs_before_sink
+        for i_out in sorted(self._out_indices):
+            if i_out <= output_index:
+                # "insert before"
+                output_index += 1
+            else:
+                # everything else is inserted after
+                break
+        return output_index
+
+    def _compute_conditioner_inputs(self, xs, ys, dlogp):
+        conditioner_inputs = []
+        if self.condition_on_flow_input:
+            conditioner_inputs.extend([xs[i] for i in self._indices])
+        if self.condition_on_flow_output:
+            conditioner_inputs.extend([ys[i] for i in self._out_indices])
+        if self.condition_on_dlogp:
+            conditioner_inputs.append(dlogp)
+        if self.condition_on_passive_input:
+            is_passive = lambda i: i not in (*self._indices, self.volume_sink_index)
+            conditioner_inputs.extend([x for i, x in enumerate(xs) if is_passive(i)])
+        # reshape and concatenate
+        batch_size = xs.shape[0]  # assume only one batch dimension
+        return torch.cat([x.reshape(batch_size, -1) for x in conditioner_inputs], dim=-1)
+
+    def _forward(self, *xs, **kwargs):
+        *ys, dlogp = super()._forward(*xs, **kwargs)
+        conditioner_inputs = []
+        if self.condition_on_flow_input:
+            conditioner_inputs =  ...
+        out[self.volume_sink_output_index] = ...
+
+
+    def compute_shift_logscale(self, input):
+        self.shift_logscale()
+
+    def parameter_shape(self, input_shape):
+        pass
+
+    def output_shape(self, output_shape):
+        pass
+
+
+    class VolumeSinkConditioner(torch.nn.Module):
+        def __init__(self):
+            pass
