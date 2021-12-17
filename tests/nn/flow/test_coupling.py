@@ -1,11 +1,10 @@
 import pytest
 
 import torch
-<<<<<<< HEAD
-from bgflow import Flow, SplitFlow, Transformer, CouplingFlow, WrapFlow, VolumePreservingWrapFlow, DenseNet
-=======
-from bgflow import SplitFlow, Transformer, CouplingFlow, WrapFlow, SetConstantFlow
->>>>>>> factory
+from bgflow import (
+    Flow, SplitFlow, Transformer, CouplingFlow, WrapFlow,
+    SetConstantFlow, VolumePreservingWrapFlow, DenseNet
+)
 
 
 def test_split_flow(ctx):

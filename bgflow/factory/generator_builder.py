@@ -16,7 +16,7 @@ from ..nn.flow.inverted import InverseFlow
 from ..nn.flow.cdf import CDFTransform
 from ..nn.flow.base import Flow
 from ..nn.flow.torchtransform import TorchTransform
-from ..distribution.distribution import UniformDistribution
+from ..distribution.distributions import UniformDistribution
 from ..distribution.normal import NormalDistribution
 from ..distribution.product import ProductDistribution, ProductEnergy
 from ..bg import BoltzmannGenerator
