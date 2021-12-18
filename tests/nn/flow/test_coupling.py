@@ -191,6 +191,12 @@ def test_volume_preserving_wrap(ctx):
     assert torch.allclose(outputs[3].prod(), expected)
     assert torch.allclose(outputs[4], 2*inputs[4])
 
+    # inversion
+    *z2, dlogp2 = wrap_flow.forward(*outputs, inverse=True)
+    for x, y in zip(inputs, z2):
+        assert torch.allclose(x, y)
+    assert torch.allclose(dlogp2, -dlogp)
+
 
 def test_set_constant_flow(ctx):
     batchsize = 4

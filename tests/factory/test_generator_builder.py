@@ -286,5 +286,7 @@ def test_volume_preserving_context(ctx):
             param_groups=("group1", )
         )
     generator = builder.build_generator()
-    *x, dlogp = generator.sample(10, with_dlogp=True)
+    results = generator.sample(10, with_latent=True, with_dlogp=True, with_energy=True)
+    x, z, dlogp, energy = results[:2], results[2], results[3], results[4]
     assert torch.allclose(dlogp, torch.zeros_like(dlogp), atol=1e-5)
+    assert torch.allclose(generator.energy(*x), generator.prior.energy(*z), atol=1e-5)

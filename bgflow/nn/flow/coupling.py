@@ -14,7 +14,6 @@ __all__ = [
 ]
 
 
-
 class SplitFlow(Flow):
     """Split the input tensor into multiple output tensors.
 
@@ -286,12 +285,14 @@ class VolumePreservingWrapFlow(Flow):
 
     def _forward(self, *xs, **kwargs):
         *ys, dlogp = self.flow.forward(*xs, **kwargs)
-        *ys, co_dlogp = self._apply_coflow(dlogp, xs, ys, inverse=False)
+        co_out, co_dlogp = self._apply_coflow(dlogp, xs, ys, inverse=False)
+        ys[self.out_volume_sink_index] = co_out
         return *ys, dlogp + co_dlogp
 
     def _inverse(self, *ys, **kwargs):
         *xs, dlogp = self.flow.forward(*ys, inverse=True, **kwargs)
-        *xs, co_dlogp = self._apply_coflow(dlogp, xs, ys, inverse=True)
+        co_out, co_dlogp = self._apply_coflow(dlogp, xs, ys, inverse=True)
+        xs[self.volume_sink_index] = co_out
         return *xs, dlogp + co_dlogp
 
     def _apply_coflow(self, dlogp, xs, ys, inverse):
@@ -302,9 +303,7 @@ class VolumePreservingWrapFlow(Flow):
             *[y for i, y in enumerate(ys)]
         ]
         *co_out, co_dlogp = self.co_flow.forward(*coflow_in, target_dlogp=-dlogp, inverse=inverse)
-        ys = list(ys)
-        ys[self.out_volume_sink_index] = co_out[1 + self.volume_sink_index]
-        return *ys, co_dlogp
+        return co_out[1 + self.volume_sink_index], co_dlogp
 
 
 class SetConstantFlow(Flow):

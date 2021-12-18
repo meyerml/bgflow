@@ -73,7 +73,7 @@ class AffineTransformer(Transformer):
         return y, dlogp
 
     def _inverse(self, x, y, *cond, target_dlogp=None, **kwargs):
-        mu, log_sigma = self._get_mu_and_log_sigma(x, y, *cond, target_dlogp=target_dlogp)
+        mu, log_sigma = self._get_mu_and_log_sigma(x, y, *cond, target_dlogp=-target_dlogp)
         assert mu.shape[-1] == y.shape[-1]
         assert log_sigma.shape[-1] == y.shape[-1]
         sigma_inv = torch.exp(-log_sigma)
