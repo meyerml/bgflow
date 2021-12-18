@@ -500,7 +500,7 @@ class BoltzmannGeneratorBuilder:
             **conditioner_kwargs
     ):
         previous_layer = len(self.layers)
-        input_shape_dict = copy.deepcopy(self.current_dims)
+        input_shape_dict = copy.copy(self.current_dims)
         volume_sink_index_before = self.current_dims.index(volume_sink)
         yield
         # wrap layers that have been added in context
@@ -519,31 +519,31 @@ class BoltzmannGeneratorBuilder:
             cond_indices.append(0)
             cond_names.append(dlogp_info)
         for i, (info, shape) in enumerate(input_shape_dict.items(), start=1):
-            assert info != volume_sink
             coflow_input_shapes[info] = shape
-            if info not in exclude_inputs_from_conditioner:
+            if info not in (*exclude_inputs_from_conditioner, volume_sink):
                 cond_indices.append(i)
                 cond_names.append(info)
         for i, (info, shape) in enumerate(self.current_dims.items(), start=1+len(input_shape_dict)):
             info_out = info._replace(name=info.name+"_out")
             coflow_input_shapes[info_out] = shape
-            if info not in exclude_outputs_from_conditioner:
+            if info not in (*exclude_outputs_from_conditioner, volume_sink):
                 cond_indices.append(i)
                 cond_names.append(info_out)
 
-        affine_conditioner = make_conditioners(
+        affine_conditioners = make_conditioners(
             transformer_type=AffineTransformer,
-            what=volume_sink,
+            what=_tuple(volume_sink),
             on=cond_names,
             shape_info=coflow_input_shapes,
             **conditioner_kwargs
         )
+        affine_conditioners = {name: net.to(**self.ctx) for name, net in affine_conditioners.items()}
         volume_preserver = VolumePreservingWrapFlow(
             flow=wrapped_flow,
             volume_sink_index=volume_sink_index_before,
             out_volume_sink_index=volume_sink_index_after,
             cond_indices=cond_indices,
-            **affine_conditioner
+            **affine_conditioners
         )
 
         self.add_layer(volume_preserver)
