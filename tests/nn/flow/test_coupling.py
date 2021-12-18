@@ -172,22 +172,23 @@ class DummyNVPFlow(Flow):
 
 def test_volume_preserving_wrap(ctx):
     # five inputs
-    inputs = torch.arange(20, **ctx).reshape(2, 10).chunk(5, dim=-1)
+    inputs = torch.arange(1, 21, **ctx).reshape(2, 10).chunk(5, dim=-1)
     # flow
     wrap_flow = VolumePreservingWrapFlow(
         flow=DummyNVPFlow(),
         volume_sink_index=3,
         out_volume_sink_index=3,
-        shift_transformation=DenseNet([17, 2]),
+        shift_transformation=None,
         scale_transformation=DenseNet([17, 2]),
         cond_indices=(0, 1, 2, 3, 5, 6, 7, 8, 10),
-    )
+    ).to(**ctx)
     *outputs, dlogp = wrap_flow.forward(*inputs)
     assert torch.allclose(dlogp, torch.zeros_like(dlogp))
     assert torch.allclose(outputs[0], 2*inputs[0])
     assert torch.allclose(outputs[1], 2*inputs[1])
     assert torch.allclose(outputs[2], 2*inputs[2])
-    assert torch.allclose(outputs[3], 1/(2*2*2*2)*inputs[3])
+    expected = 1/(2**8)*inputs[3].prod()
+    assert torch.allclose(outputs[3].prod(), expected)
     assert torch.allclose(outputs[4], 2*inputs[4])
 
 

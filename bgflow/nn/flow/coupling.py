@@ -250,9 +250,9 @@ class VolumePreservingWrapFlow(Flow):
             flow: Flow,
             volume_sink_index: int,
             out_volume_sink_index: int,
-            shift_transformation: torch.nn.Module,
-            scale_transformation: torch.nn.Module,
-            cond_indices: Sequence[int]
+            cond_indices: Sequence[int],
+            shift_transformation: torch.nn.Module = None,
+            scale_transformation: torch.nn.Module = None
     ):
         """
 
@@ -261,11 +261,11 @@ class VolumePreservingWrapFlow(Flow):
         flow
         volume_sink_index
         out_volume_sink_index
-        shift_transformation
-        scale_transformation
         cond_indices : Sequence[int]
             This is a bit tricky. These indices refer to elements of the list
             `[dlogp, *inputs, *outputs]`.
+        shift_transformation : torch.nn.Module, optional
+        scale_transformation : torch.nn.Module, optional
         """
         super().__init__()
         self.flow = flow
@@ -304,8 +304,7 @@ class VolumePreservingWrapFlow(Flow):
         *co_out, co_dlogp = self.co_flow.forward(*coflow_in, target_dlogp=-dlogp, inverse=inverse)
         ys = list(ys)
         ys[self.out_volume_sink_index] = co_out[1 + self.volume_sink_index]
-        print(dlogp, co_dlogp)
-        return ys, co_dlogp
+        return *ys, co_dlogp
 
 
 class SetConstantFlow(Flow):
