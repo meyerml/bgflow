@@ -1,8 +1,8 @@
 """High-level Builder API for Boltzmann generators."""
-
+import contextlib
 import warnings
 import copy
-from typing import Mapping, Sequence
+from typing import Mapping, Sequence, Set
 
 import numpy as np
 import torch
@@ -10,7 +10,8 @@ import logging
 from ..nn.flow.sequential import SequentialFlow
 from ..nn.flow.coupling import SetConstantFlow
 from ..nn.flow.transformer.spline import ConditionalSplineTransformer
-from ..nn.flow.coupling import CouplingFlow, SplitFlow, WrapFlow, MergeFlow
+from ..nn.flow.transformer.affine import AffineTransformer
+from ..nn.flow.coupling import CouplingFlow, SplitFlow, WrapFlow, MergeFlow, VolumePreservingWrapFlow
 from ..nn.flow.crd_transform.ic import GlobalInternalCoordinateTransformation
 from ..nn.flow.inverted import InverseFlow
 from ..nn.flow.cdf import CDFTransform
@@ -21,7 +22,8 @@ from ..distribution.normal import NormalDistribution
 from ..distribution.product import ProductDistribution, ProductEnergy
 from ..bg import BoltzmannGenerator
 from .tensor_info import (
-    TensorInfo, BONDS, ANGLES, TORSIONS, FIXED, ORIGIN, ROTATION, AUGMENTED, TARGET
+    TensorInfo, BONDS, ANGLES, TORSIONS, FIXED, ORIGIN, ROTATION, AUGMENTED, TARGET,
+    ShapeDictionary
 )
 from .conditioner_factory import make_conditioners
 from .transformer_factory import make_transformer
@@ -267,6 +269,7 @@ class BoltzmannGeneratorBuilder:
 
         conditioner_kwargs = copy.copy(self.default_conditioner_kwargs)
         conditioner_kwargs.update(kwargs)
+
         conditioners = make_conditioners(
             transformer_type=transformer_type,
             transformer_kwargs=transformer_kwargs,
@@ -486,6 +489,64 @@ class BoltzmannGeneratorBuilder:
         scale[halpha_torsion_indices] = 0.5
         affine = TorchTransform(torch.distributions.AffineTransform(loc=loc, scale=scale), 1)
         return self.add_layer(affine, what=(torsions, ))
+
+    @contextlib.contextmanager
+    def volume_preserving_block(
+            self,
+            volume_sink: TensorInfo,
+            condition_on_dlogp: bool = True,
+            exclude_inputs_from_conditioner: Sequence[TensorInfo] = tuple(),
+            exclude_outputs_from_conditioner: Sequence[TensorInfo] = tuple(),
+            **conditioner_kwargs
+    ):
+        previous_layer = len(self.layers)
+        input_shape_dict = copy.deepcopy(self.current_dims)
+        volume_sink_index_before = self.current_dims.index(volume_sink)
+        yield
+        # wrap layers that have been added in context
+        volume_sink_index_after = self.current_dims.index(volume_sink)
+        wrapped_flow = SequentialFlow(self.layers[previous_layer:])
+        self.layers = self.layers[:previous_layer]
+
+        # make conditioner inputs
+        cond_indices = []
+        cond_names = []
+        coflow_input_shapes = ShapeDictionary()
+
+        dlogp_info = TensorInfo("dlogp", is_circular=False)
+        coflow_input_shapes[dlogp_info] = (1,)
+        if condition_on_dlogp:
+            cond_indices.append(0)
+            cond_names.append(dlogp_info)
+        for i, (info, shape) in enumerate(input_shape_dict.items(), start=1):
+            assert info != volume_sink
+            coflow_input_shapes[info] = shape
+            if info not in exclude_inputs_from_conditioner:
+                cond_indices.append(i)
+                cond_names.append(info)
+        for i, (info, shape) in enumerate(self.current_dims.items(), start=1+len(input_shape_dict)):
+            info_out = info._replace(name=info.name+"_out")
+            coflow_input_shapes[info_out] = shape
+            if info not in exclude_outputs_from_conditioner:
+                cond_indices.append(i)
+                cond_names.append(info_out)
+
+        affine_conditioner = make_conditioners(
+            transformer_type=AffineTransformer,
+            what=volume_sink,
+            on=cond_names,
+            shape_info=coflow_input_shapes,
+            **conditioner_kwargs
+        )
+        volume_preserver = VolumePreservingWrapFlow(
+            flow=wrapped_flow,
+            volume_sink_index=volume_sink_index_before,
+            out_volume_sink_index=volume_sink_index_after,
+            cond_indices=cond_indices,
+            **affine_conditioner
+        )
+
+        self.add_layer(volume_preserver)
 
     def _add_to_param_groups(self, parameters, param_groups):
         parameters = list(parameters)

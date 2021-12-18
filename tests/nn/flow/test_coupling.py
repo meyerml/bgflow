@@ -153,14 +153,20 @@ def test_wrap_flow(device, dtype):
 
 
 class DummyNVPFlow(Flow):
+    def __init__(self, skip_indices=[3]):
+        super().__init__()
+        self.skip = skip_indices
+
     def _forward(self, *xs, **kwargs):
-        out = (2*x for x in xs)
-        dlogp = torch.log(2*torch.ones_like(xs[0][..., [0]]))
+        out = (x if i in self.skip else 2*x
+               for i, x in enumerate(xs))
+        dlogp = torch.log(2**(len(xs)-len(self.skip))*torch.ones_like(xs[0][..., [0]]))
         return (*out, dlogp)
 
     def _inverse(self, *xs, **kwargs):
-        out = (x / 2 for x in xs)
-        dlogp = torch.log(0.5*torch.ones_like(xs[0][..., [0]]))
+        out = (x if i in self.skip else x/2
+               for i, x in enumerate(xs))
+        dlogp = torch.log(0.5**(len(xs)-len(self.skip))*torch.ones_like(xs[0][..., [0]]))
         return (*out, dlogp)
 
 
@@ -169,23 +175,19 @@ def test_volume_preserving_wrap(ctx):
     inputs = torch.arange(20, **ctx).reshape(2, 10).chunk(5, dim=-1)
     # flow
     wrap_flow = VolumePreservingWrapFlow(
-        flow_input_indices=(1, 2, 4),
-        flow_output_indices=(3, 1, 4),
-        volume_sink_index=3,
         flow=DummyNVPFlow(),
-        shift_logscale=DenseNet((13, 2))
+        volume_sink_index=3,
+        out_volume_sink_index=3,
+        shift_transformation=DenseNet([17, 2]),
+        scale_transformation=DenseNet([17, 2]),
+        cond_indices=(0, 1, 2, 3, 5, 6, 7, 8, 10),
     )
-    #        0  x1  x2  SINK  x3
-    #   ->   ( 0  SINK )   ( x1  x2  x3 )
-    #   ->   ( 0  SINK )   ( y1  y2  y3 )
-    #   ->   0  y2  SINK  y1  y3
-    assert wrap_flow.volume_sink_output_index == 2
     *outputs, dlogp = wrap_flow.forward(*inputs)
     assert torch.allclose(dlogp, torch.zeros_like(dlogp))
-    assert torch.allclose(outputs[0], inputs[0])
-    assert torch.allclose(outputs[1], 2*inputs[2])
-    assert torch.allclose(outputs[2], 1/(2*2*2)*inputs[3])
-    assert torch.allclose(outputs[3], 2*inputs[1])
+    assert torch.allclose(outputs[0], 2*inputs[0])
+    assert torch.allclose(outputs[1], 2*inputs[1])
+    assert torch.allclose(outputs[2], 2*inputs[2])
+    assert torch.allclose(outputs[3], 1/(2*2*2*2)*inputs[3])
     assert torch.allclose(outputs[4], 2*inputs[4])
 
 

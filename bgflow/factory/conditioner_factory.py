@@ -1,4 +1,5 @@
 
+from typing import Mapping
 import torch
 import bgflow as bg
 from ..nn.periodic import WrapPeriodic
@@ -18,7 +19,7 @@ def make_conditioners(
         hidden=(128,128),
         activation=torch.nn.SiLU(),
         **kwargs
-):
+) -> Mapping[str, torch.nn.Module]:
     """Create coupling layer conditioners for a given transformer type,
     taking care of circular and non-circular tensors.
 
@@ -44,7 +45,7 @@ def make_conditioners(
 
     Returns
     -------
-    transformer : bg.Transformer
+    conditioners : Mapping[str, torch.nn.Module]
     """
     if _is_sin(activation):
         scale_first_weights = kwargs.pop("siren_scale_first_weights", False)
