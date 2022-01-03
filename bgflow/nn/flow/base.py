@@ -1,8 +1,6 @@
 
-from typing import Union
 
 import torch
-import numpy as np
 
 
 __all__ = ["Flow"]
