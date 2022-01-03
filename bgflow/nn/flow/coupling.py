@@ -1,5 +1,5 @@
 import warnings
-from typing import Sequence, Union
+from typing import Sequence
 
 import numpy as np
 import torch
@@ -290,19 +290,19 @@ class VolumePreservingWrapFlow(Flow):
         return *ys, dlogp + co_dlogp
 
     def _inverse(self, *ys, **kwargs):
-        *xs, negative_dlogp = self.flow.forward(*ys, inverse=True, **kwargs)
-        co_out, co_dlogp = self._apply_coflow(-negative_dlogp, xs, ys, inverse=True)
+        *xs, dlogp = self.flow.forward(*ys, inverse=True, **kwargs)
+        co_out, co_dlogp = self._apply_coflow(forward_dlogp=-dlogp, xs=xs, ys=ys, inverse=True)
         xs[self.volume_sink_index] = co_out
-        return *xs, negative_dlogp + co_dlogp
+        return *xs, dlogp + co_dlogp
 
-    def _apply_coflow(self, dlogp, xs, ys, inverse):
+    def _apply_coflow(self, forward_dlogp, xs, ys, inverse):
         assert torch.allclose(xs[self.volume_sink_index], ys[self.out_volume_sink_index])
         coflow_in = [
-            dlogp,
+            forward_dlogp,
             *[x for i, x in enumerate(xs)],
             *[y for i, y in enumerate(ys)]
         ]
-        target_dlogp = dlogp if inverse else -dlogp
+        target_dlogp = forward_dlogp if inverse else -forward_dlogp
         *co_out, co_dlogp = self.co_flow.forward(*coflow_in, target_dlogp=target_dlogp, inverse=inverse)
         return co_out[1 + self.volume_sink_index], co_dlogp
 
