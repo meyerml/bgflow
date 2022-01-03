@@ -179,8 +179,8 @@ def test_volume_preserving_wrap(ctx):
         volume_sink_index=3,
         out_volume_sink_index=3,
         shift_transformation=None,
-        scale_transformation=DenseNet([17, 2]),
-        cond_indices=(0, 1, 2, 3, 5, 6, 7, 8, 10),
+        scale_transformation=DenseNet([9, 2]),
+        cond_indices=(0, 1, 2, 3, 5, ),
     ).to(**ctx)
     *outputs, dlogp = wrap_flow.forward(*inputs)
     assert torch.allclose(dlogp, torch.zeros_like(dlogp))
@@ -193,9 +193,11 @@ def test_volume_preserving_wrap(ctx):
 
     # inversion
     *z2, dlogp2 = wrap_flow.forward(*outputs, inverse=True)
+    assert torch.allclose(dlogp2, -dlogp)
+    for x, y in zip(inputs, z2):
+        print(x, y)
     for x, y in zip(inputs, z2):
         assert torch.allclose(x, y)
-    assert torch.allclose(dlogp2, -dlogp)
 
 
 def test_set_constant_flow(ctx):

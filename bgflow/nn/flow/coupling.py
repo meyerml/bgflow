@@ -290,10 +290,10 @@ class VolumePreservingWrapFlow(Flow):
         return *ys, dlogp + co_dlogp
 
     def _inverse(self, *ys, **kwargs):
-        *xs, dlogp = self.flow.forward(*ys, inverse=True, **kwargs)
-        co_out, co_dlogp = self._apply_coflow(dlogp, xs, ys, inverse=True)
+        *xs, negative_dlogp = self.flow.forward(*ys, inverse=True, **kwargs)
+        co_out, co_dlogp = self._apply_coflow(-negative_dlogp, xs, ys, inverse=True)
         xs[self.volume_sink_index] = co_out
-        return *xs, dlogp + co_dlogp
+        return *xs, negative_dlogp + co_dlogp
 
     def _apply_coflow(self, dlogp, xs, ys, inverse):
         assert torch.allclose(xs[self.volume_sink_index], ys[self.out_volume_sink_index])
@@ -302,7 +302,8 @@ class VolumePreservingWrapFlow(Flow):
             *[x for i, x in enumerate(xs)],
             *[y for i, y in enumerate(ys)]
         ]
-        *co_out, co_dlogp = self.co_flow.forward(*coflow_in, target_dlogp=-dlogp, inverse=inverse)
+        target_dlogp = dlogp if inverse else -dlogp
+        *co_out, co_dlogp = self.co_flow.forward(*coflow_in, target_dlogp=target_dlogp, inverse=inverse)
         return co_out[1 + self.volume_sink_index], co_dlogp
 
 
