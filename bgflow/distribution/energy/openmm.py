@@ -10,7 +10,7 @@ import torch
 
 from ...utils.types import assert_numpy
 from .base import _BridgeEnergy, _Bridge
-
+from ipdb import set_trace as bp
 
 __all__ = ["OpenMMBridge", "OpenMMEnergy"]
 
@@ -44,10 +44,22 @@ class OpenMMBridge(_Bridge):
         platform_name='CPU',
         err_handling="warning",
         n_workers=mp.cpu_count(),
-        n_simulation_steps=0
+        n_simulation_steps=0,
+        threads=1
     ):
         from simtk import unit
-        platform_properties = {'Threads': str(max(1, mp.cpu_count()//n_workers))} if platform_name == "CPU" else {}
+        #platform_properties = {'Threads': str(max(1, mp.cpu_count()//n_workers))} if platform_name == "CPU" else {}
+        if platform_name=="CPU":
+            platform_properties = {'Threads': str(threads)}
+        #elif platform_name == "CUDA":
+        #    if torch.cuda.device_count()>1:
+        #        platform_properties={"DeviceIndex":1}
+        #    else:
+        #        platform_properties={"DeviceIndex":0}
+        else:
+            platform_properties={}
+
+
 
         # Compute all energies in child processes due to a bug in the OpenMM's PME code.
         # This might be problematic if an energy has already been computed in the same program on the parent thread,
@@ -412,6 +424,10 @@ class SingleContext:
         from simtk.openmm import Platform, Context
         assert n_workers == 1
         openmm_platform = Platform.getPlatformByName(platform_name)
+        if platform_name=="CUDA":
+            if torch.cuda.device_count()>1:
+                openmm_platform.setPropertyDefaultValue("DeviceIndex","1")
+                #bp()
         self._openmm_context = Context(system, integrator, openmm_platform, platform_properties)
 
     def evaluate(

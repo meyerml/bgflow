@@ -387,10 +387,11 @@ class BoltzmannGeneratorBuilder:
         if isinstance(to, str):
             to = TensorInfo(name=to, is_circular=what[0].is_circular)
         if not all(w.is_circular == to.is_circular for w in what):
-            raise ValueError(
-                f"Merging non-circular with circular tensors is dangerous and therefore disabled. "
-                f"Found discrepancies in f{what} and f{to}."
-            )
+            #raise ValueError(
+            #    f"Merging non-circular with circular tensors is dangerous and therefore disabled. "
+            #    f"Found discrepancies in f{what} and f{to}."
+            #)
+            warnings.warn("merging a noncircular and a circular tensor")
         input_indices = [self.current_dims.index(el) for el in what]
         if sizes_or_indices is None:
             sizes_or_indices = [self.current_dims[el][dim] for el in what]
