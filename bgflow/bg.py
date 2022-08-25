@@ -2,11 +2,12 @@ import torch
 from .distribution.energy import Energy
 from .distribution.sampling import Sampler
 from .utils.types import pack_tensor_in_tuple
+from ipdb import set_trace as bp
 
 __all__ = [
     "BoltzmannGenerator", "unnormalized_kl_div", "unormalized_nll",
     "sampling_efficiency", "effective_sample_size", "log_weights",
-    "log_weights_given_latent"
+    "log_weights_given_latent", "log_weights_from_samples"
 ]
 
 
@@ -59,6 +60,7 @@ def log_weights_given_latent(x, z, dlogp, prior, target, temperature=1.0, normal
         + dlogp
         - target.energy(*x, temperature=temperature)
     )
+    #bp()
     if normalize:
         logw = logw - torch.logsumexp(logw, dim=0)
     return logw.view(-1)
@@ -101,6 +103,16 @@ class BoltzmannGenerator(Energy, Sampler):
     @property
     def prior(self):
         return self._prior
+
+    def sample_and_log_prob(self, batch_size):
+        samples, log_probs = self.sample(batch_size, with_energy=True)
+        return samples, log_probs.squeeze()
+
+    def log_prob(self, x):
+        *z, neg_dlogp = self._flow(x, inverse = True)
+        log_prob =  -self._prior.energy(*z, temperature=1.0) - neg_dlogp
+        return log_prob.squeeze()
+
 
     def sample(
         self,

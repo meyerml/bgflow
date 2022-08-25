@@ -25,6 +25,7 @@ class NormalDistribution(Energy, Sampler):
         self._has_cov = False
         if cov is not None:
             self.set_cov(cov)
+        self._standard_normal = torch.distributions.normal.Normal(torch.tensor(0.0).to(self._mean), torch.tensor(1.0).to(self._mean))
 
     def energy(self, x, temperature=1.0):
         if self._has_mean:
@@ -88,6 +89,12 @@ class NormalDistribution(Energy, Sampler):
 
     def _sample(self, n_samples):
         return self._sample_with_temperature(n_samples)
+
+    #def cdf(self, x):
+    #    return (self._standard_normal.cdf((x - self._mu)/self._sigma))
+    #    
+    #def log_prob(self, x):
+    #    return self._standard_normal.log_prob((x - self._mu)/self._sigma) - torch.log(self.Z * self._sigma)
 
 
 class TruncatedNormalDistribution(Energy, Sampler):

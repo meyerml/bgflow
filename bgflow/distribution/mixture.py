@@ -45,3 +45,14 @@ class MixtureDistribution(Energy, Sampler):
     def _log_assignments(self, x):
         energies = torch.stack([c.energy(x) for c in self._components], dim=-1)
         return -energies
+    
+    def log_prob(self, x):
+        log_probs= torch.stack([c.log_prob(x) for c in self._components], dim=-1)
+        probs=torch.exp(log_probs)
+        prob=torch.sum(probs, dim = -1)
+        return torch.log(prob)
+    
+    def cdf(self, x):
+        cdfs=torch.stack([c.cdf(x) for c in self._components], dim=-1)
+        weighted_cdfs=torch.exp(self._log_weights())*cdfs
+        cdf=torch.sum(weighted_cdfs, dim=-1)

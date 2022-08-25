@@ -139,6 +139,8 @@ class ConditionalSplineTransformer(Transformer):
         from nflows.transforms.base import InputOutsideDomain
 
         widths, heights, slopes = self._compute_params(x, y.shape[-1])
+        #import ipdb
+        #ipdb.set_trace()
         rqs = lambda y: rational_quadratic_spline(
             y,
             widths,
