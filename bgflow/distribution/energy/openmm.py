@@ -423,12 +423,12 @@ class SingleContext:
         """Set up workers and queues."""
         from simtk.openmm import Platform, Context
         assert n_workers == 1
-        openmm_platform = Platform.getPlatformByName(platform_name)
+        self.openmm_platform = Platform.getPlatformByName(platform_name)
         if platform_name=="CUDA":
             if torch.cuda.device_count()>1:
-                openmm_platform.setPropertyDefaultValue("DeviceIndex","1")
+                self.openmm_platform.setPropertyDefaultValue("DeviceIndex","1")
                 #bp()
-        self._openmm_context = Context(system, integrator, openmm_platform, platform_properties)
+        self._openmm_context = Context(system, integrator, self.openmm_platform, platform_properties)
 
     def evaluate(
             self,
